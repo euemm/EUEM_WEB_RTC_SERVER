@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure WebRTC Signaling Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .auth-section { background-color: #fff3cd; }
+        .connection-section { background-color: #d1ecf1; }
+        .messages-section { background-color: #f8f9fa; }
+        .webrtc-section { background-color: #d4edda; }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .danger { background-color: #dc3545; }
+        .success { background-color: #28a745; }
+        
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .status {
+            font-weight: bold;
+            margin: 10px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .connecting { background-color: #fff3cd; color: #856404; }
+        .authenticated { background-color: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>Secure WebRTC Signaling Client</h1>
+    
+    <div class="container auth-section">
+        <h3>Authentication</h3>
+        <input type="text" id="username" placeholder="Username" value="user1">
+        <input type="password" id="password" placeholder="Password" value="password123">
+        <button id="loginBtn">Login</button>
+        <button id="logoutBtn" disabled>Logout</button>
+        <div id="authStatus" class="status disconnected">Not authenticated</div>
+    </div>
+
+    <div class="container connection-section">
+        <h3>Secure Connection</h3>
+        <input type="text" id="serverUrl" value="wss://localhost:8000" placeholder="Secure WebSocket URL">
+        <input type="text" id="roomId" value="secure-room" placeholder="Room ID">
+        <button id="connectBtn" disabled>Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+        <div id="connectionStatus" class="status disconnected">Not connected</div>
+    </div>
+
+    <div class="container messages-section">
+        <h3>Messages</h3>
+        <button id="pingBtn" disabled>Send Ping</button>
+        <button id="clearBtn">Clear Messages</button>
+        <div id="messages"></div>
+    </div>
+
+    <div class="container webrtc-section">
+        <h3>WebRTC Test (Simulated)</h3>
+        <button id="sendOfferBtn" disabled>Send Offer</button>
+        <button id="sendAnswerBtn" disabled>Send Answer</button>
+        <button id="sendIceBtn" disabled>Send ICE Candidate</button>
+    </div>
+
+    <script>
+        let authToken = null;
+        let ws = null;
+        let roomId = '';
+        
+        // DOM elements
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const pingBtn = document.getElementById('pingBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const sendOfferBtn = document.getElementById('sendOfferBtn');
+        const sendAnswerBtn = document.getElementById('sendAnswerBtn');
+        const sendIceBtn = document.getElementById('sendIceBtn');
+        const authStatus = document.getElementById('authStatus');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const messages = document.getElementById('messages');
+        const serverUrlInput = document.getElementById('serverUrl');
+        const roomIdInput = document.getElementById('roomId');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+
+        // Event listeners
+        loginBtn.addEventListener('click', login);
+        logoutBtn.addEventListener('click', logout);
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        pingBtn.addEventListener('click', sendPing);
+        clearBtn.addEventListener('click', clearMessages);
+        sendOfferBtn.addEventListener('click', sendOffer);
+        sendAnswerBtn.addEventListener('click', sendAnswer);
+        sendIceBtn.addEventListener('click', sendIceCandidate);
+
+        function addMessage(message, type = 'info') {
+            const div = document.createElement('div');
+            div.style.margin = '5px 0';
+            div.style.padding = '5px';
+            div.style.borderRadius = '3px';
+            
+            switch(type) {
+                case 'sent':
+                    div.style.backgroundColor = '#d4edda';
+                    div.style.borderLeft = '4px solid #28a745';
+                    break;
+                case 'received':
+                    div.style.backgroundColor = '#d1ecf1';
+                    div.style.borderLeft = '4px solid #17a2b8';
+                    break;
+                case 'error':
+                    div.style.backgroundColor = '#f8d7da';
+                    div.style.borderLeft = '4px solid #dc3545';
+                    break;
+                case 'auth':
+                    div.style.backgroundColor = '#fff3cd';
+                    div.style.borderLeft = '4px solid #ffc107';
+                    break;
+                default:
+                    div.style.backgroundColor = '#f8f9fa';
+                    div.style.borderLeft = '4px solid #6c757d';
+            }
+            
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function updateAuthStatus(newStatus, className) {
+            authStatus.textContent = newStatus;
+            authStatus.className = `status ${className}`;
+        }
+
+        function updateConnectionStatus(newStatus, className) {
+            connectionStatus.textContent = newStatus;
+            connectionStatus.className = `status ${className}`;
+        }
+
+        function updateButtons() {
+            const isAuthenticated = authToken !== null;
+            const isConnected = ws && ws.readyState === WebSocket.OPEN;
+            
+            loginBtn.disabled = isAuthenticated;
+            logoutBtn.disabled = !isAuthenticated;
+            connectBtn.disabled = !isAuthenticated || isConnected;
+            disconnectBtn.disabled = !isConnected;
+            pingBtn.disabled = !isConnected;
+            sendOfferBtn.disabled = !isConnected;
+            sendAnswerBtn.disabled = !isConnected;
+            sendIceBtn.disabled = !isConnected;
+        }
+
+        async function login() {
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+            
+            if (!username || !password) {
+                addMessage('Please enter username and password', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('https://localhost:8000/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                authToken = data.access_token;
+                
+                updateAuthStatus('Authenticated', 'authenticated');
+                updateButtons();
+                addMessage(`Successfully logged in as ${username}`, 'auth');
+                
+            } catch (error) {
+                addMessage(`Login failed: ${error.message}`, 'error');
+                updateAuthStatus('Authentication failed', 'disconnected');
+            }
+        }
+
+        function logout() {
+            authToken = null;
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            updateAuthStatus('Not authenticated', 'disconnected');
+            updateConnectionStatus('Not connected', 'disconnected');
+            updateButtons();
+            addMessage('Logged out', 'auth');
+        }
+
+        function connect() {
+            const serverUrl = serverUrlInput.value;
+            roomId = roomIdInput.value;
+            
+            if (!serverUrl || !roomId) {
+                addMessage('Please enter server URL and room ID', 'error');
+                return;
+            }
+
+            if (!authToken) {
+                addMessage('Please login first', 'error');
+                return;
+            }
+
+            try {
+                ws = new WebSocket(`${serverUrl}/ws/${roomId}`);
+                updateConnectionStatus('Connecting...', 'connecting');
+                addMessage(`Connecting to ${serverUrl}/ws/${roomId}`);
+
+                ws.onopen = function(event) {
+                    updateConnectionStatus('Connected - Authenticating...', 'connecting');
+                    addMessage('WebSocket connected, waiting for authentication', 'received');
+                };
+
+                ws.onmessage = function(event) {
+                    try {
+                        const message = JSON.parse(event.data);
+                        addMessage(`Received: ${JSON.stringify(message, null, 2)}`, 'received');
+                        
+                        // Handle different message types
+                        switch(message.type) {
+                            case 'auth_required':
+                                // Send JWT token for authentication
+                                ws.send(JSON.stringify({
+                                    type: 'auth_token',
+                                    token: authToken
+                                }));
+                                addMessage('Sent authentication token', 'sent');
+                                break;
+                            case 'auth_success':
+                                updateConnectionStatus('Connected & Authenticated', 'connected');
+                                addMessage(`Authentication successful as ${message.user}`, 'auth');
+                                break;
+                            case 'pong':
+                                addMessage('Server responded to ping', 'info');
+                                break;
+                            case 'user_joined':
+                                addMessage(`User ${message.username} joined room. Total users: ${message.connected_users}`, 'info');
+                                break;
+                            case 'user_left':
+                                addMessage(`User left room. Total users: ${message.connected_users}`, 'info');
+                                break;
+                            case 'offer':
+                                addMessage('Received WebRTC offer', 'info');
+                                break;
+                            case 'answer':
+                                addMessage('Received WebRTC answer', 'info');
+                                break;
+                            case 'ice_candidate':
+                                addMessage('Received ICE candidate', 'info');
+                                break;
+                            case 'error':
+                                addMessage(`Server error: ${message.message}`, 'error');
+                                break;
+                        }
+                    } catch (e) {
+                        addMessage(`Error parsing message: ${e.message}`, 'error');
+                    }
+                };
+
+                ws.onclose = function(event) {
+                    updateConnectionStatus('Disconnected', 'disconnected');
+                    updateButtons();
+                    addMessage(`Connection closed: ${event.code} - ${event.reason}`, 'info');
+                };
+
+                ws.onerror = function(error) {
+                    addMessage(`WebSocket error: ${error}`, 'error');
+                    updateConnectionStatus('Error', 'disconnected');
+                    updateButtons();
+                };
+
+            } catch (error) {
+                addMessage(`Connection error: ${error.message}`, 'error');
+                updateConnectionStatus('Error', 'disconnected');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function sendMessage(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const jsonMessage = JSON.stringify(message);
+                ws.send(jsonMessage);
+                addMessage(`Sent: ${JSON.stringify(message, null, 2)}`, 'sent');
+            } else {
+                addMessage('Not connected to server', 'error');
+            }
+        }
+
+        function sendPing() {
+            sendMessage({ type: 'ping' });
+        }
+
+        function sendOffer() {
+            const offer = {
+                type: 'offer',
+                offer: {
+                    type: 'offer',
+                    sdp: 'v=0\r\no=- 123456789 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=msid-semantic: WMS\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\na=ice-ufrag:test\r\na=ice-pwd:test\r\na=ice-options:trickle\r\na=fingerprint:sha-256 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00\r\na=setup:actpass\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n'
+                }
+            };
+            sendMessage(offer);
+        }
+
+        function sendAnswer() {
+            const answer = {
+                type: 'answer',
+                answer: {
+                    type: 'answer',
+                    sdp: 'v=0\r\no=- 123456789 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=msid-semantic: WMS\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\na=ice-ufrag:test\r\na=ice-pwd:test\r\na=ice-options:trickle\r\na=fingerprint:sha-256 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00\r\na=setup:passive\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n'
+                }
+            };
+            sendMessage(answer);
+        }
+
+        function sendIceCandidate() {
+            const candidate = {
+                type: 'ice_candidate',
+                candidate: {
+                    candidate: 'candidate:1 1 UDP 2130706431 192.168.1.100 54400 typ host',
+                    sdpMLineIndex: 0,
+                    sdpMid: '0'
+                }
+            };
+            sendMessage(candidate);
+        }
+
+        function clearMessages() {
+            messages.innerHTML = '';
+        }
+
+        // Initialize
+        updateButtons();
+        
+        // Add warning about self-signed certificates
+        addMessage('Note: This client uses self-signed SSL certificates. You may need to accept the security warning in your browser.', 'auth');
+    </script>
+</body>
+</html>

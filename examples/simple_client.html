@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Signaling Client Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        #messages {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .status {
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .connected { color: green; }
+        .disconnected { color: red; }
+        .connecting { color: orange; }
+    </style>
+</head>
+<body>
+    <h1>WebRTC Signaling Client Example</h1>
+    
+    <div class="container">
+        <h3>Connection</h3>
+        <input type="text" id="serverUrl" value="ws://localhost:8000" placeholder="WebSocket URL (ws:// or wss://)">
+        <input type="text" id="roomId" value="test-room" placeholder="Room ID">
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+        <div id="status" class="status disconnected">Disconnected</div>
+    </div>
+
+    <div class="container">
+        <h3>Messages</h3>
+        <button id="pingBtn" disabled>Send Ping</button>
+        <button id="clearBtn">Clear Messages</button>
+        <div id="messages"></div>
+    </div>
+
+    <div class="container">
+        <h3>WebRTC Test (Simulated)</h3>
+        <button id="sendOfferBtn" disabled>Send Offer</button>
+        <button id="sendAnswerBtn" disabled>Send Answer</button>
+        <button id="sendIceBtn" disabled>Send ICE Candidate</button>
+    </div>
+
+    <script>
+        let ws = null;
+        let roomId = '';
+        
+        // DOM elements
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const pingBtn = document.getElementById('pingBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const sendOfferBtn = document.getElementById('sendOfferBtn');
+        const sendAnswerBtn = document.getElementById('sendAnswerBtn');
+        const sendIceBtn = document.getElementById('sendIceBtn');
+        const status = document.getElementById('status');
+        const messages = document.getElementById('messages');
+        const serverUrlInput = document.getElementById('serverUrl');
+        const roomIdInput = document.getElementById('roomId');
+
+        // Event listeners
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        pingBtn.addEventListener('click', sendPing);
+        clearBtn.addEventListener('click', clearMessages);
+        sendOfferBtn.addEventListener('click', sendOffer);
+        sendAnswerBtn.addEventListener('click', sendAnswer);
+        sendIceBtn.addEventListener('click', sendIceCandidate);
+
+        function addMessage(message, type = 'info') {
+            const div = document.createElement('div');
+            div.style.margin = '5px 0';
+            div.style.padding = '5px';
+            div.style.borderRadius = '3px';
+            
+            switch(type) {
+                case 'sent':
+                    div.style.backgroundColor = '#d4edda';
+                    div.style.borderLeft = '4px solid #28a745';
+                    break;
+                case 'received':
+                    div.style.backgroundColor = '#d1ecf1';
+                    div.style.borderLeft = '4px solid #17a2b8';
+                    break;
+                case 'error':
+                    div.style.backgroundColor = '#f8d7da';
+                    div.style.borderLeft = '4px solid #dc3545';
+                    break;
+                default:
+                    div.style.backgroundColor = '#f8f9fa';
+                    div.style.borderLeft = '4px solid #6c757d';
+            }
+            
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function updateStatus(newStatus, className) {
+            status.textContent = newStatus;
+            status.className = `status ${className}`;
+        }
+
+        function updateButtons(connected) {
+            connectBtn.disabled = connected;
+            disconnectBtn.disabled = !connected;
+            pingBtn.disabled = !connected;
+            sendOfferBtn.disabled = !connected;
+            sendAnswerBtn.disabled = !connected;
+            sendIceBtn.disabled = !connected;
+        }
+
+        function connect() {
+            const serverUrl = serverUrlInput.value;
+            roomId = roomIdInput.value;
+            
+            if (!serverUrl || !roomId) {
+                addMessage('Please enter server URL and room ID', 'error');
+                return;
+            }
+
+            try {
+                ws = new WebSocket(`${serverUrl}/ws/${roomId}`);
+                updateStatus('Connecting...', 'connecting');
+                addMessage(`Connecting to ${serverUrl}/ws/${roomId}`);
+
+                ws.onopen = function(event) {
+                    updateStatus('Connected', 'connected');
+                    updateButtons(true);
+                    addMessage('Connected to signaling server', 'info');
+                };
+
+                ws.onmessage = function(event) {
+                    try {
+                        const message = JSON.parse(event.data);
+                        addMessage(`Received: ${JSON.stringify(message, null, 2)}`, 'received');
+                        
+                        // Handle different message types
+                        switch(message.type) {
+                            case 'pong':
+                                addMessage('Server responded to ping', 'info');
+                                break;
+                            case 'user_joined':
+                                addMessage(`User joined room. Total users: ${message.connected_users}`, 'info');
+                                break;
+                            case 'user_left':
+                                addMessage(`User left room. Total users: ${message.connected_users}`, 'info');
+                                break;
+                            case 'offer':
+                                addMessage('Received WebRTC offer', 'info');
+                                break;
+                            case 'answer':
+                                addMessage('Received WebRTC answer', 'info');
+                                break;
+                            case 'ice_candidate':
+                                addMessage('Received ICE candidate', 'info');
+                                break;
+                            case 'error':
+                                addMessage(`Server error: ${message.message}`, 'error');
+                                break;
+                        }
+                    } catch (e) {
+                        addMessage(`Error parsing message: ${e.message}`, 'error');
+                    }
+                };
+
+                ws.onclose = function(event) {
+                    updateStatus('Disconnected', 'disconnected');
+                    updateButtons(false);
+                    addMessage(`Connection closed: ${event.code} - ${event.reason}`, 'info');
+                };
+
+                ws.onerror = function(error) {
+                    addMessage(`WebSocket error: ${error}`, 'error');
+                    updateStatus('Error', 'disconnected');
+                    updateButtons(false);
+                };
+
+            } catch (error) {
+                addMessage(`Connection error: ${error.message}`, 'error');
+                updateStatus('Error', 'disconnected');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function sendMessage(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const jsonMessage = JSON.stringify(message);
+                ws.send(jsonMessage);
+                addMessage(`Sent: ${JSON.stringify(message, null, 2)}`, 'sent');
+            } else {
+                addMessage('Not connected to server', 'error');
+            }
+        }
+
+        function sendPing() {
+            sendMessage({ type: 'ping' });
+        }
+
+        function sendOffer() {
+            const offer = {
+                type: 'offer',
+                offer: {
+                    type: 'offer',
+                    sdp: 'v=0\r\no=- 123456789 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=msid-semantic: WMS\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\na=ice-ufrag:test\r\na=ice-pwd:test\r\na=ice-options:trickle\r\na=fingerprint:sha-256 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00\r\na=setup:actpass\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n'
+                }
+            };
+            sendMessage(offer);
+        }
+
+        function sendAnswer() {
+            const answer = {
+                type: 'answer',
+                answer: {
+                    type: 'answer',
+                    sdp: 'v=0\r\no=- 123456789 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=msid-semantic: WMS\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\na=ice-ufrag:test\r\na=ice-pwd:test\r\na=ice-options:trickle\r\na=fingerprint:sha-256 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00\r\na=setup:passive\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n'
+                }
+            };
+            sendMessage(answer);
+        }
+
+        function sendIceCandidate() {
+            const candidate = {
+                type: 'ice_candidate',
+                candidate: {
+                    candidate: 'candidate:1 1 UDP 2130706431 192.168.1.100 54400 typ host',
+                    sdpMLineIndex: 0,
+                    sdpMid: '0'
+                }
+            };
+            sendMessage(candidate);
+        }
+
+        function clearMessages() {
+            messages.innerHTML = '';
+        }
+
+        // Initialize
+        updateButtons(false);
+    </script>
+</body>
+</html>
