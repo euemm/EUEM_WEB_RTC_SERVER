@@ -56,3 +56,4 @@ python3 -m uvicorn src.main:app \
     --reload \
     --reload-dir src \
     --reload-include "*.py"
+

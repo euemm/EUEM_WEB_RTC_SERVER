@@ -280,6 +280,19 @@ ws.send(JSON.stringify({
 }));
 ```
 
+## 🔐 Security
+
+**Important:** This server handles sensitive data including user credentials and SSL certificates. Please read the [Security Setup Guide](SECURITY_SETUP.md) before deployment.
+
+### Quick Security Checklist:
+- [ ] Copy `env.example` to `.env` and update secrets
+- [ ] Change default passwords in `users.csv`
+- [ ] Use real SSL certificates for production
+- [ ] Set `REQUIRE_HTTPS=true` for production
+- [ ] Limit `CORS_ORIGINS` to your domains
+
+See [SECURITY_SETUP.md](SECURITY_SETUP.md) for detailed security instructions.
+
 ## License
 
 [Add your license here]
