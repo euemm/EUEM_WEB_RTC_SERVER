@@ -141,3 +141,37 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# WebRTC Signaling Server - Security & Sensitive Files
+# SSL/TLS Certificates and Keys
+ssl/
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+
+# User data and authentication files
+users.csv
+user_data/
+auth_data/
+
+# Server logs and runtime files
+server.log
+access.log
+error.log
+
+# Database files (if using SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Configuration files with secrets
+config.ini
+secrets.json
+private_keys/

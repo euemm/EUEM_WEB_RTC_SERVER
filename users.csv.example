@@ -1,0 +1,4 @@
+username,email,hashed_password,is_active
+admin,admin@example.com,$2b$12$GX4Mgc4QJsSDC...,true
+user1,user1@example.com,$2b$12$GX4Mgc4QJsSDC...,true
+user2,user2@example.com,$2b$12$GX4Mgc4QJsSDC...,true
