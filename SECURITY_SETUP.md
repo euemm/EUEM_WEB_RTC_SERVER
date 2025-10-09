@@ -112,8 +112,8 @@ Before deploying to production:
 HOST=0.0.0.0
 PORT=8000
 DEBUG=false
-REQUIRE_HTTPS=true
-CORS_ORIGINS=["https://yourdomain.com", "https://app.yourdomain.com"]
+REQUIRE_HTTPS=false
+CORS_ORIGINS=["http://localhost:3000/"]
 SECRET_KEY=your-256-bit-secret-key-here
 JWT_SECRET_KEY=your-different-jwt-secret-key-here
 LOG_LEVEL=INFO

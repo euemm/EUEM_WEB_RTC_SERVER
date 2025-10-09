@@ -162,7 +162,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     logger.info(f"Client IP: {client_ip}")
     logger.info(f"Headers: {dict(websocket.headers)}")
     logger.info(f"Query params: {dict(websocket.query_params)}")
-    logger.info(f"Subprotocols: {websocket.subprotocols}")
     
     # Check if IP is blocked
     if ddos_protection.is_ip_blocked(client_ip):
@@ -174,6 +173,10 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     
     # Track connection
     ddos_protection.add_connection(client_ip, connection_id)
+    
+    # Track if connection was established (for cleanup in finally block)
+    connected = False
+    client_id = None
     
     try:
         # Accept WebSocket connection
@@ -195,6 +198,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         
         # Validate JWT token
         token = auth_message.get("token")
+        client_id = auth_message.get("clientId")  # Get client ID from auth message
         if not token:
             ddos_protection.record_auth_failure(client_ip)
             await websocket.close(code=1008, reason="Invalid token")
@@ -220,10 +224,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             # Clear auth failures on successful login
             ddos_protection.clear_auth_failures(client_ip)
             
-            # Send authentication success
+            # Send authentication success with assigned client_id
+            # If client didn't provide ID, generate one
+            if not client_id:
+                client_id = str(uuid.uuid4())
+            
             await websocket.send_text(json.dumps({
                 "type": "auth_success",
                 "user": username,
+                "client_id": client_id,
                 "message": "Authentication successful"
             }))
             
@@ -233,8 +242,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             await websocket.close(code=1008, reason="Authentication failed")
             return
         
-        # Connect to room with user context
-        await websocket_handler.connect(websocket, room_id, user.username)
+        # Connect to room with user context and client_id
+        await websocket_handler.connect(websocket, room_id, user.username, client_id)
+        connected = True  # Mark connection as established
         
         # Main message loop
         while True:
@@ -254,23 +264,34 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         logger.info(f"=== WEBSOCKET DISCONNECT ===")
         logger.info(f"Room ID: {room_id}")
         logger.info(f"Client IP: {client_ip}")
+        logger.info(f"Client ID: {client_id}")
         logger.info(f"Close code: {e.code}")
         logger.info(f"Close reason: {e.reason}")
-        await websocket_handler.disconnect(websocket, room_id)
     except Exception as e:
         logger.error(f"=== WEBSOCKET ERROR ===")
         logger.error(f"Room ID: {room_id}")
         logger.error(f"Client IP: {client_ip}")
+        logger.error(f"Client ID: {client_id}")
         logger.error(f"Error: {e}")
         logger.error(f"Error type: {type(e).__name__}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        await websocket_handler.disconnect(websocket, room_id)
     finally:
-        # Remove connection tracking
+        # CRITICAL: Always disconnect and cleanup, even on error
         logger.info(f"=== WEBSOCKET CLEANUP ===")
-        logger.info(f"Removing connection tracking for IP: {client_ip}, Connection ID: {connection_id}")
+        logger.info(f"Room ID: {room_id}, Client ID: {client_id}, Connection ID: {connection_id}")
+        
+        # Only disconnect if connection was successfully established
+        if connected:
+            try:
+                await websocket_handler.disconnect(websocket, room_id)
+                logger.info(f"Successfully disconnected client {client_id} from room {room_id}")
+            except Exception as disconnect_error:
+                logger.error(f"Error during disconnect: {disconnect_error}")
+        
+        # Always remove DDoS protection tracking
         ddos_protection.remove_connection(client_ip, connection_id)
+        logger.info(f"Removed connection tracking for IP: {client_ip}")
 
 @app.post("/api/rooms/{room_id}/info")
 async def get_room_info(room_id: str):
