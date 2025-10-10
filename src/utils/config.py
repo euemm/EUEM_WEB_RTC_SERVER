@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # Health Check
     health_check_interval: int = Field(default=30, env="HEALTH_CHECK_INTERVAL")
     
+    # TURN Server Configuration
+    turnserver_secret: str = Field(default="", env="TURNSERVER_SECRET")
+    turnserver_url: str = Field(default="", env="TURNSERVER_URL")
+    turnserver_urls: List[str] = Field(default_factory=list)
+    turnserver_ttl: int = Field(default=86400, env="TURNSERVER_TTL")  # 24 hours default
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -21,6 +21,7 @@ A FastAPI-based signaling server for WebRTC peer-to-peer connections. This serve
 - **CORS Security** - Restricted cross-origin requests
 - **Input Validation** - Pydantic model validation
 - **Security Logging** - Comprehensive security event logging
+- **TURN Server Integration** - Time-limited credentials for coturn TURN servers
 
 ## Project Structure
 
@@ -134,11 +135,20 @@ const ws = new WebSocket('ws://localhost:8000/ws/room_name');
 
 ### API Endpoints
 
+#### General
 - `GET /` - Health check
 - `GET /health` - Detailed health information
 - `GET /api/rooms` - List all active rooms
 - `POST /api/rooms/{room_id}/info` - Get room information
 - `WebSocket /ws/{room_id}` - WebRTC signaling endpoint
+
+#### Authentication
+- `POST /auth/login` - Login and get JWT token
+- `POST /auth/token` - OAuth2 compatible token endpoint
+- `GET /auth/me` - Get current user information
+- `POST /auth/refresh` - Refresh JWT token
+- `POST /auth/logout` - Logout
+- `GET /auth/turn-credentials` - Get TURN server credentials (requires authentication)
 
 ### Signaling Message Format
 
@@ -216,6 +226,14 @@ All configuration is handled through environment variables in the `.env` file:
 | `WEBSOCKET_TIMEOUT` | `30` | WebSocket timeout in seconds |
 | `MAX_CONNECTIONS_PER_ROOM` | `10` | Maximum connections per room |
 
+### TURN Server Configuration
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TURNSERVER_SECRET` | `""` | Shared secret for TURN server (coturn) |
+| `TURNSERVER_URL` | `""` | Primary TURN server URL (e.g., `turn:turn.example.com:3478`) |
+| `TURNSERVER_URLS` | `[]` | List of TURN server URLs (supports TURN and TURNS) |
+| `TURNSERVER_TTL` | `86400` | Credential validity period in seconds (default: 24 hours) |
+
 ## Development
 
 ### Running Tests
@@ -250,6 +268,8 @@ pytest tests/
 
 ## WebRTC Client Integration
 
+### Basic Signaling Example
+
 Here's a basic example of how to integrate with the signaling server:
 
 ```javascript
@@ -279,6 +299,58 @@ ws.send(JSON.stringify({
   offer: peerConnection.localDescription
 }));
 ```
+
+### TURN Server Integration
+
+The server provides time-limited TURN credentials for NAT traversal. Here's how to use them:
+
+#### 1. Login and Get JWT Token
+
+```javascript
+const response = await fetch('https://localhost:8000/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username: 'admin', password: 'admin123' })
+});
+const { access_token } = await response.json();
+```
+
+#### 2. Get TURN Credentials
+
+```javascript
+const turnResponse = await fetch('https://localhost:8000/auth/turn-credentials', {
+  method: 'GET',
+  headers: { 'Authorization': `Bearer ${access_token}` }
+});
+const turnCredentials = await turnResponse.json();
+// Response: { username, credential, urls, ttl }
+```
+
+#### 3. Create RTCPeerConnection with TURN
+
+```javascript
+const configuration = {
+  iceServers: [
+    {
+      urls: turnCredentials.urls,
+      username: turnCredentials.username,
+      credential: turnCredentials.credential
+    }
+  ]
+};
+
+const peerConnection = new RTCPeerConnection(configuration);
+```
+
+#### TURN Credentials Format
+
+The server generates credentials compatible with coturn TURN server:
+- **Username format**: `timestamp:username` (e.g., `1704067200:admin`)
+- **Credential**: HMAC-SHA1 hash encoded in base64
+- **TTL**: Credentials expire after the configured TTL (default: 24 hours)
+- **URLs**: List of TURN/TURNS server URLs
+
+See `examples/turn_credentials_example.html` for a complete working example.
 
 ## 🔐 Security
 
