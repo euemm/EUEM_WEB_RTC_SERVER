@@ -1,13 +1,14 @@
 # WebRTC Signaling Server
 
-A FastAPI-based signaling server for WebRTC peer-to-peer connections. This server handles the exchange of signaling messages (offers, answers, and ICE candidates) between WebRTC clients.
+A FastAPI-based signaling server for WebRTC peer-to-peer connections. This server handles the exchange of signaling messages (offers, answers, and ICE candidates) between WebRTC clients with enterprise-grade security features.
 
 ## Features
 
 ### Core Functionality
 - WebSocket-based signaling for WebRTC connections
 - Room-based connection management
-- Real-time message forwarding
+- Real-time message forwarding with targeted messaging
+- Client ID tracking for peer-to-peer connections
 - Health check endpoints
 - Configurable via environment variables
 - Comprehensive logging
@@ -15,13 +16,21 @@ A FastAPI-based signaling server for WebRTC peer-to-peer connections. This serve
 
 ### Security Features
 - **JWT Authentication** - Secure token-based authentication
-- **CSV User Storage** - Simple file-based user management
+- **CSV User Storage** - Simple file-based user management with bcrypt password hashing
 - **HTTPS/WSS Only** - Encrypted connections with SSL/TLS
 - **DDoS Protection** - Rate limiting and connection tracking
 - **CORS Security** - Restricted cross-origin requests
 - **Input Validation** - Pydantic model validation
 - **Security Logging** - Comprehensive security event logging
 - **TURN Server Integration** - Time-limited credentials for coturn TURN servers
+
+### WebSocket Improvements
+- Client ID tracking and management
+- Existing users list sent on room join
+- Targeted peer-to-peer messaging
+- No echo to sender (messages not sent back to originator)
+- Sender information included in all messages
+- Helper methods for client lookup
 
 ## Project Structure
 
@@ -51,10 +60,12 @@ EUEM_WEB_RTC_SERVER/
 │   ├── server.crt                  # SSL certificate
 │   └── server.key                  # SSL private key
 ├── tests/
-│   └── test_websocket_handler.py   # Unit tests
+│   ├── test_websocket_handler.py   # WebSocket handler tests
+│   └── test_turn_credentials.py    # TURN credentials tests
 ├── examples/
 │   ├── simple_client.html          # Basic client example
-│   └── secure_client.html          # Secure client with auth
+│   ├── secure_client.html          # Secure client with auth
+│   └── turn_credentials_example.html # TURN credentials example
 ├── users.csv                       # User credentials (auto-generated)
 ├── .env                            # Environment configuration
 ├── requirements.txt                # Python dependencies
@@ -65,140 +76,35 @@ EUEM_WEB_RTC_SERVER/
 
 ## Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd EUEM_WEB_RTC_SERVER
-   ```
-
-2. **Create a virtual environment:**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   python3 -m pip install -r requirements.txt
-   ```
-
-4. **Configure environment variables:**
-   Edit the `.env` file to match your requirements:
-   ```bash
-   # Server Configuration
-   HOST=0.0.0.0
-   PORT=8000
-   DEBUG=true
-   
-   # Security (change in production!)
-   SECRET_KEY=your-secret-key-change-this-in-production
-   ```
-
-## Usage
-
-### Starting the Server
-
-#### Secure Server (Recommended)
+### 1. Clone the repository
 ```bash
-./start_secure_server.sh
+git clone <repository-url>
+cd EUEM_WEB_RTC_SERVER
 ```
-- Runs with HTTPS/WSS encryption
-- JWT authentication required
-- DDoS protection enabled
-- Access at `https://localhost:8000`
 
-#### Basic Server (Development Only)
+### 2. Create a virtual environment
 ```bash
-./start_server.sh
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
-- Runs with HTTP/WS (unencrypted)
-- No authentication
-- Basic rate limiting
-- Access at `http://localhost:8000`
 
-#### Manual Startup
+### 3. Install dependencies
 ```bash
-# Secure server
-python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile ssl/server.key --ssl-certfile ssl/server.crt --reload
-
-# Basic server
-python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+python3 -m pip install -r requirements.txt
 ```
 
-### WebSocket Connection
-
-Connect to the signaling server via WebSocket:
-
-```javascript
-const ws = new WebSocket('ws://localhost:8000/ws/room_name');
+### 4. Configure environment variables
+Copy the example environment file and edit it:
+```bash
+cp env.example .env
+nano .env
 ```
 
-### API Endpoints
-
-#### General
-- `GET /` - Health check
-- `GET /health` - Detailed health information
-- `GET /api/rooms` - List all active rooms
-- `POST /api/rooms/{room_id}/info` - Get room information
-- `WebSocket /ws/{room_id}` - WebRTC signaling endpoint
-
-#### Authentication
-- `POST /auth/login` - Login and get JWT token
-- `POST /auth/token` - OAuth2 compatible token endpoint
-- `GET /auth/me` - Get current user information
-- `POST /auth/refresh` - Refresh JWT token
-- `POST /auth/logout` - Logout
-- `GET /auth/turn-credentials` - Get TURN server credentials (requires authentication)
-
-### Signaling Message Format
-
-The server expects JSON messages with the following structure:
-
-```json
-{
-  "type": "offer|answer|ice_candidate|ping",
-  "offer": {...},      // For offer messages
-  "answer": {...},     // For answer messages
-  "candidate": {...}   // For ICE candidate messages
-}
-```
-
-## Security
-
-### Authentication
-The server uses JWT (JSON Web Tokens) for authentication:
-
-1. **Login** - POST to `/auth/login` with username/password
-2. **Get Token** - Receive JWT token in response
-3. **Connect** - Use token in WebSocket connection
-4. **Authenticate** - Server validates token before allowing signaling
-
-### Default Users
-The server creates default users on first run:
-- `admin` / `admin123`
-- `user1` / `password123`
-- `user2` / `password123`
-
-**Important**: Change these passwords in production!
-
-### SSL/TLS
-- Auto-generates self-signed certificates for development
-- Uses HTTPS/WSS for all connections
-- Supports production certificates
-- Enforces secure cipher suites
-
-### DDoS Protection
-- Rate limiting: 60 messages/minute per IP
-- Connection tracking: Max 5 connections per IP
-- Authentication failure tracking
-- IP blocking after repeated failures
-- Automatic cleanup of blocked IPs
-
-### Security Headers
-- CORS restrictions
-- Secure cookie settings
-- XSS protection
-- Content type validation
+**Important**: Change these values in production:
+- `SECRET_KEY` - Use a strong 256-bit secret
+- `JWT_SECRET_KEY` - Use a different strong secret for JWT signing
+- `CORS_ORIGINS` - Limit to your actual domains
+- `REQUIRE_HTTPS=true` - Enable HTTPS enforcement
 
 ## Configuration
 
@@ -234,78 +140,319 @@ All configuration is handled through environment variables in the `.env` file:
 | `TURNSERVER_URLS` | `[]` | List of TURN server URLs (supports TURN and TURNS) |
 | `TURNSERVER_TTL` | `86400` | Credential validity period in seconds (default: 24 hours) |
 
-## Development
-
-### Running Tests
-
+### Example Production .env
 ```bash
-pytest tests/
+HOST=0.0.0.0
+PORT=8000
+DEBUG=false
+REQUIRE_HTTPS=true
+CORS_ORIGINS=["https://yourdomain.com"]
+SECRET_KEY=your-256-bit-secret-key-here
+JWT_SECRET_KEY=your-different-jwt-secret-key-here
+LOG_LEVEL=INFO
+RATE_LIMIT_PER_MINUTE=60
+
+# TURN Server Configuration
+TURNSERVER_SECRET=your-shared-secret-here
+TURNSERVER_URLS=["turn:turn.example.com:3478", "turns:turn.example.com:5349"]
+TURNSERVER_TTL=86400
 ```
 
-### Code Structure
+## Security Setup
 
-- **WebSocketHandler**: Manages WebSocket connections and message routing
-- **SignalData Models**: Pydantic models for message validation
-- **Config**: Environment-based configuration management
-- **Main App**: FastAPI application with WebSocket endpoints
+### Sensitive Files Protection
 
-### Adding New Features
+The following sensitive files are automatically ignored by git:
 
-1. Add new message types to `src/models/signal_data.py`
-2. Implement handlers in `src/handlers/websocket_handler.py`
-3. Add tests in `tests/`
-4. Update documentation
+#### SSL/TLS Certificates
+- `ssl/` directory and all contents
+- `*.crt`, `*.key`, `*.pem`, `*.p12`, `*.pfx` files
 
-## Production Deployment
+#### User Data
+- `users.csv` - Contains user credentials and password hashes
+- `user_data/` directory
+- `auth_data/` directory
 
-1. Set `DEBUG=false` in `.env`
-2. Change `SECRET_KEY` to a secure value
-3. Configure proper `CORS_ORIGINS`
-4. Use a production WSGI server like Gunicorn:
-   ```bash
-   gunicorn src.main:app -w 4 -k uvicorn.workers.UvicornWorker
-   ```
+#### Configuration Files
+- `.env` - Environment variables with secrets
+- `config.ini` - Configuration with sensitive data
+- `secrets.json` - JSON configuration with secrets
 
-## WebRTC Client Integration
+### Initial Setup Steps
 
-### Basic Signaling Example
+#### 1. SSL Certificates (for HTTPS/WSS)
 
-Here's a basic example of how to integrate with the signaling server:
+The server will automatically generate self-signed certificates for development:
 
+```bash
+# Certificates are generated automatically on first run
+./start_secure_server.sh
+```
+
+For production, replace the auto-generated certificates in `ssl/` with real certificates from a trusted CA.
+
+#### 2. User Management
+
+Default users are created automatically in `users.csv`:
+- `admin` / `admin123`
+- `user1` / `password123`
+- `user2` / `password123`
+
+**Important**: Change these passwords in production!
+
+#### 3. File Permissions
+
+Secure sensitive files:
+```bash
+chmod 600 .env
+chmod 600 ssl/server.key
+chmod 644 ssl/server.crt
+chmod 644 users.csv
+```
+
+### Security Checklist
+
+Before deploying to production:
+
+- [ ] Changed all default passwords in `users.csv`
+- [ ] Updated `SECRET_KEY` in `.env`
+- [ ] Updated `JWT_SECRET_KEY` in `.env`
+- [ ] Set `REQUIRE_HTTPS=true`
+- [ ] Limited `CORS_ORIGINS` to actual domains
+- [ ] Installed real SSL certificates
+- [ ] Set appropriate file permissions
+- [ ] Reviewed and removed any test/debug code
+- [ ] Enabled proper logging and monitoring
+
+### Security Best Practices
+
+#### Development
+- Use `REQUIRE_HTTPS=false` for local development
+- Self-signed certificates are acceptable for local testing
+- Default passwords are acceptable for development only
+
+#### Production
+- **ALWAYS** use `REQUIRE_HTTPS=true`
+- **ALWAYS** use real SSL certificates from a trusted CA
+- **ALWAYS** change all default passwords
+- **ALWAYS** use strong, unique secrets in `.env`
+- **ALWAYS** limit `CORS_ORIGINS` to your actual domains
+- **ALWAYS** use a secure password hashing method (bcrypt is enabled)
+
+## Usage
+
+### Starting the Server
+
+#### Production Server (HTTPS/WSS only)
+```bash
+./start_prod.sh
+```
+- Runs with HTTPS/WSS encryption only
+- JWT authentication required
+- Requires valid SSL certificates in `ssl/` directory
+- Requires `users.csv` with production credentials
+- DDoS protection enabled
+- Access at `https://0.0.0.0:8000`
+
+#### Development Server (HTTP/WS)
+```bash
+./start_dev.sh
+```
+- Runs with HTTP/WS (unencrypted)
+- Auto-creates test users if not exists
+- Enables auto-reload for code changes
+- Debug logging enabled
+- Access at `http://localhost:8000`
+- Test credentials provided on startup
+
+#### Manual Startup
+```bash
+# Production server (HTTPS only)
+python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile ssl/server.key --ssl-certfile ssl/server.crt --log-level info
+
+# Development server (HTTP)
+python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+```
+
+### API Endpoints
+
+#### General
+- `GET /` - Health check
+- `GET /health` - Detailed health information
+- `GET /api/rooms` - List all active rooms
+- `POST /api/rooms/{room_id}/info` - Get room information
+- `WebSocket /ws/{room_id}` - WebRTC signaling endpoint
+
+#### Authentication
+- `POST /auth/login` - Login and get JWT token
+- `POST /auth/token` - OAuth2 compatible token endpoint
+- `GET /auth/me` - Get current user information
+- `POST /auth/refresh` - Refresh JWT token
+- `POST /auth/logout` - Logout
+- `GET /auth/turn-credentials` - Get TURN server credentials (requires authentication)
+
+### WebSocket Connection Flow
+
+#### 1. Connect to WebSocket
 ```javascript
-// Connect to signaling server
-const ws = new WebSocket('ws://localhost:8000/ws/room_name');
+const ws = new WebSocket('wss://localhost:8000/ws/room_name');
+```
 
-// Handle incoming messages
-ws.onmessage = (event) => {
-  const message = JSON.parse(event.data);
-  
-  switch(message.type) {
-    case 'offer':
-      // Handle WebRTC offer
-      break;
-    case 'answer':
-      // Handle WebRTC answer
-      break;
-    case 'ice_candidate':
-      // Handle ICE candidate
-      break;
-  }
-};
+#### 2. Authentication Flow
+```javascript
+// Server sends authentication requirement
+// {"type": "auth_required"}
 
-// Send offer
+// Client sends JWT token and optional client ID
 ws.send(JSON.stringify({
-  type: 'offer',
-  offer: peerConnection.localDescription
+  type: "auth_token",
+  token: jwtToken,
+  clientId: clientId  // Optional, server generates if not provided
+}));
+
+// Server responds with success
+// {"type": "auth_success", "user": "username", "client_id": "uuid"}
+
+// Server sends list of existing users in room
+// {"type": "users_in_room", "users": [{"client_id": "...", "username": "..."}]}
+
+// Server broadcasts to others that you joined
+// {"type": "user_joined", "username": "...", "client_id": "..."}
+```
+
+### Signaling Message Format
+
+#### Offer (with targeted messaging)
+```javascript
+// Send offer to specific peer
+ws.send(JSON.stringify({
+  type: "offer",
+  offer: peerConnection.localDescription,
+  to: targetClientId  // Optional: if omitted, broadcasts to all
+}));
+
+// Recipient receives:
+// {
+//   "type": "offer",
+//   "offer": {...},
+//   "from": senderClientId,
+//   "username": senderUsername
+// }
+```
+
+#### Answer
+```javascript
+ws.send(JSON.stringify({
+  type: "answer",
+  answer: peerConnection.localDescription,
+  to: targetClientId
 }));
 ```
 
-### TURN Server Integration
+#### ICE Candidate
+```javascript
+ws.send(JSON.stringify({
+  type: "ice_candidate",
+  candidate: candidateData,
+  to: targetClientId
+}));
+```
 
-The server provides time-limited TURN credentials for NAT traversal. Here's how to use them:
+## TURN Server Integration
+
+TURN (Traversal Using Relays around NAT) enables WebRTC connections to work even when direct peer-to-peer connections are blocked by firewalls or NAT.
+
+### Quick Start with TURN
+
+#### 1. Install coturn
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install coturn
+```
+
+**CentOS/RHEL:**
+```bash
+sudo yum install coturn
+```
+
+**macOS:**
+```bash
+brew install coturn
+```
+
+#### 2. Configure coturn
+
+Edit `/etc/turnserver.conf`:
+```conf
+# TURN server name and realm
+realm=your-domain.com
+server-name=your-domain.com
+
+# Listening ports
+listening-port=3478
+tls-listening-port=5349
+
+# IP addresses
+listening-ip=0.0.0.0
+relay-ip=YOUR_SERVER_PUBLIC_IP
+external-ip=YOUR_SERVER_PUBLIC_IP
+
+# Enable time-limited credentials
+use-auth-secret
+static-auth-secret=YOUR_TURNSERVER_SECRET
+
+# Certificate files (for TURNS - TLS)
+cert=/path/to/cert.pem
+pkey=/path/to/privkey.pem
+
+# Security options
+fingerprint
+lt-cred-mech
+no-loopback-peers
+
+# Logging
+log-file=/var/log/turnserver.log
+verbose
+```
+
+#### 3. Generate Shared Secret
+```bash
+openssl rand -hex 32
+```
+
+Use this value for both:
+- `static-auth-secret` in `/etc/turnserver.conf`
+- `TURNSERVER_SECRET` in your `.env` file
+
+#### 4. Update .env file
+```bash
+TURNSERVER_SECRET=your-shared-secret-here
+TURNSERVER_URLS=["turn:turn.example.com:3478", "turns:turn.example.com:5349"]
+TURNSERVER_TTL=86400
+```
+
+#### 5. Start coturn
+```bash
+sudo systemctl enable coturn
+sudo systemctl start coturn
+```
+
+#### 6. Configure Firewall
+
+**UFW (Ubuntu):**
+```bash
+sudo ufw allow 3478/tcp
+sudo ufw allow 3478/udp
+sudo ufw allow 5349/tcp
+sudo ufw allow 5349/udp
+sudo ufw allow 49152:65535/udp  # Relay ports
+```
+
+### Using TURN Credentials in Your Application
 
 #### 1. Login and Get JWT Token
-
 ```javascript
 const response = await fetch('https://localhost:8000/auth/login', {
   method: 'POST',
@@ -316,7 +463,6 @@ const { access_token } = await response.json();
 ```
 
 #### 2. Get TURN Credentials
-
 ```javascript
 const turnResponse = await fetch('https://localhost:8000/auth/turn-credentials', {
   method: 'GET',
@@ -327,7 +473,6 @@ const turnCredentials = await turnResponse.json();
 ```
 
 #### 3. Create RTCPeerConnection with TURN
-
 ```javascript
 const configuration = {
   iceServers: [
@@ -335,6 +480,10 @@ const configuration = {
       urls: turnCredentials.urls,
       username: turnCredentials.username,
       credential: turnCredentials.credential
+    },
+    // Optional: Add STUN servers
+    {
+      urls: 'stun:stun.l.google.com:19302'
     }
   ]
 };
@@ -342,7 +491,7 @@ const configuration = {
 const peerConnection = new RTCPeerConnection(configuration);
 ```
 
-#### TURN Credentials Format
+### TURN Credentials Format
 
 The server generates credentials compatible with coturn TURN server:
 - **Username format**: `timestamp:username` (e.g., `1704067200:admin`)
@@ -350,20 +499,291 @@ The server generates credentials compatible with coturn TURN server:
 - **TTL**: Credentials expire after the configured TTL (default: 24 hours)
 - **URLs**: List of TURN/TURNS server URLs
 
-See `examples/turn_credentials_example.html` for a complete working example.
+### TURN API Reference
 
-## 🔐 Security
+#### GET /auth/turn-credentials
 
-**Important:** This server handles sensitive data including user credentials and SSL certificates. Please read the [Security Setup Guide](SECURITY_SETUP.md) before deployment.
+**Description**: Generate time-limited TURN server credentials
 
-### Quick Security Checklist:
-- [ ] Copy `env.example` to `.env` and update secrets
-- [ ] Change default passwords in `users.csv`
-- [ ] Use real SSL certificates for production
-- [ ] Set `REQUIRE_HTTPS=true` for production
-- [ ] Limit `CORS_ORIGINS` to your domains
+**Authentication**: Required (JWT Bearer token)
 
-See [SECURITY_SETUP.md](SECURITY_SETUP.md) for detailed security instructions.
+**Request Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Response** (200 OK):
+```json
+{
+  "username": "1704067200:admin",
+  "credential": "dGVzdF9jcmVkZW50aWFs...",
+  "urls": [
+    "turn:turn.example.com:3478",
+    "turns:turn.example.com:5349"
+  ],
+  "ttl": 86400
+}
+```
+
+**Error Responses**:
+- `401 Unauthorized`: Missing or invalid JWT token
+- `503 Service Unavailable`: TURN server not configured
+
+### TURN Production Recommendations
+
+1. **Use dedicated server**: Don't run TURN on the same server as the signaling server
+2. **Enable monitoring**: Use Prometheus or similar tools
+3. **Set resource limits**: Configure `max-bps` and `total-quota`
+4. **Use TURNS**: Always provide TURNS (TLS) option for security
+5. **Geographic distribution**: Deploy TURN servers in multiple regions
+6. **Load balancing**: Use multiple TURN servers for redundancy
+7. **Regular updates**: Keep coturn updated for security patches
+8. **Monitor costs**: TURN servers can consume significant bandwidth
+
+### SSL/TLS Certificates for TURNS
+
+Using Let's Encrypt:
+```bash
+# Install certbot
+sudo apt-get install certbot
+
+# Get certificate
+sudo certbot certonly --standalone -d turn.your-domain.com
+
+# Update turnserver.conf
+cert=/etc/letsencrypt/live/turn.your-domain.com/cert.pem
+pkey=/etc/letsencrypt/live/turn.your-domain.com/privkey.pem
+
+# Auto-renewal
+sudo certbot renew --dry-run
+```
+
+### TURN Troubleshooting
+
+#### "TURN server not configured"
+**Cause**: `TURNSERVER_SECRET` is empty in .env
+**Solution**: Set `TURNSERVER_SECRET` in your .env file
+
+#### "Authentication failed" in coturn logs
+**Cause**: Secret mismatch between server and coturn
+**Solution**: Ensure `TURNSERVER_SECRET` matches `static-auth-secret` in coturn config
+
+#### Credentials expire immediately
+**Cause**: Server time not synchronized
+**Solution**: Ensure both servers have correct time (use NTP)
+
+#### Can't connect to TURN server
+**Cause**: Firewall blocking TURN ports
+**Solution**: Open ports 3478 (TURN) and 5349 (TURNS) in firewall
+
+## WebSocket Client Implementation
+
+### Basic Client Example
+
+```javascript
+// Generate client ID (optional)
+const myClientId = crypto.randomUUID();
+
+// Connect to signaling server
+const ws = new WebSocket('wss://localhost:8000/ws/room_name');
+
+ws.onopen = () => {
+  // Wait for auth_required message
+};
+
+ws.onmessage = async (event) => {
+  const message = JSON.parse(event.data);
+  
+  switch(message.type) {
+    case 'auth_required':
+      // Send authentication
+      ws.send(JSON.stringify({
+        type: 'auth_token',
+        token: jwtToken,
+        clientId: myClientId  // Optional
+      }));
+      break;
+      
+    case 'auth_success':
+      console.log('Connected as:', message.user);
+      console.log('My client ID:', message.client_id);
+      break;
+      
+    case 'users_in_room':
+      // List of existing users
+      console.log('Users in room:', message.users);
+      // Each user: {client_id, username}
+      break;
+      
+    case 'user_joined':
+      console.log('User joined:', message.username, message.client_id);
+      break;
+      
+    case 'user_left':
+      console.log('User left:', message.username, message.client_id);
+      break;
+      
+    case 'offer':
+      // Handle WebRTC offer from specific peer
+      const senderClientId = message.from;
+      const senderUsername = message.username;
+      await handleOffer(message.offer, senderClientId);
+      break;
+      
+    case 'answer':
+      // Handle WebRTC answer
+      await handleAnswer(message.answer, message.from);
+      break;
+      
+    case 'ice_candidate':
+      // Handle ICE candidate
+      await handleCandidate(message.candidate, message.from);
+      break;
+  }
+};
+
+// Send offer to specific peer
+function sendOffer(targetClientId, offer) {
+  ws.send(JSON.stringify({
+    type: 'offer',
+    offer: offer,
+    to: targetClientId
+  }));
+}
+
+// Send answer to specific peer
+function sendAnswer(targetClientId, answer) {
+  ws.send(JSON.stringify({
+    type: 'answer',
+    answer: answer,
+    to: targetClientId
+  }));
+}
+
+// Send ICE candidate to specific peer
+function sendCandidate(targetClientId, candidate) {
+  ws.send(JSON.stringify({
+    type: 'ice_candidate',
+    candidate: candidate,
+    to: targetClientId
+  }));
+}
+```
+
+### Client Features
+
+1. **Client ID Tracking**: Each client gets a unique ID for peer-to-peer messaging
+2. **Existing Users List**: New users receive list of existing users on join
+3. **Targeted Messaging**: Send offers, answers, and candidates to specific peers
+4. **No Echo**: Senders never receive their own messages
+5. **Sender Information**: All messages include sender's client_id and username
+
+## Development
+
+### Running Tests
+
+```bash
+# All tests
+pytest tests/
+
+# Specific test file
+python3 -m pytest tests/test_turn_credentials.py -v
+python3 -m pytest tests/test_websocket_handler.py -v
+```
+
+### Code Structure
+
+- **WebSocketHandler**: Manages WebSocket connections and message routing
+- **SignalData Models**: Pydantic models for message validation
+- **JWT Handler**: User authentication and token management
+- **Config**: Environment-based configuration management
+- **Main App**: FastAPI application with WebSocket endpoints
+
+### Adding New Features
+
+1. Add new message types to `src/models/signal_data.py`
+2. Implement handlers in `src/handlers/websocket_handler.py`
+3. Add tests in `tests/`
+4. Update documentation
+
+### Performance Impact
+
+The security features add minimal overhead:
+- **JWT validation**: ~1ms per request
+- **Rate limiting**: ~0.1ms per request
+- **SSL/TLS**: ~5-10ms connection overhead
+- **Password hashing**: ~100ms (only during login)
+- **Memory usage**: +~10MB for security tracking
+
+## Production Deployment
+
+### Pre-deployment Checklist
+
+1. **Security**
+   - [ ] Set `DEBUG=false` in `.env`
+   - [ ] Change `SECRET_KEY` to a secure value
+   - [ ] Change `JWT_SECRET_KEY` to a secure value
+   - [ ] Configure proper `CORS_ORIGINS`
+   - [ ] Install production SSL certificates
+   - [ ] Change all default passwords in `users.csv`
+   - [ ] Set `REQUIRE_HTTPS=true`
+
+2. **TURN Server**
+   - [ ] Set strong `TURNSERVER_SECRET`
+   - [ ] Configure coturn with same secret
+   - [ ] Use HTTPS/TURNS for encrypted connections
+   - [ ] Configure SSL certificates for TURNS
+   - [ ] Open firewall ports (3478, 5349, relay ports)
+   - [ ] Set appropriate `TURNSERVER_TTL`
+   - [ ] Monitor coturn logs for abuse
+   - [ ] Use multiple TURN servers for redundancy
+
+3. **Monitoring**
+   - [ ] Configure proper logging
+   - [ ] Set up log rotation
+   - [ ] Monitor authentication failures
+   - [ ] Track connection statistics
+   - [ ] Set up alerts for security events
+
+### Using Production WSGI Server
+
+```bash
+# Using Gunicorn with Uvicorn workers
+gunicorn src.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+```
+
+### Monitoring
+
+Monitor these files for security:
+- `server.log` - Check for authentication failures
+- `access.log` - Monitor for suspicious requests
+- `users.csv` - Regular user access reviews
+- `/var/log/turnserver.log` - TURN server activity
+
+## Example Files
+
+The project includes several example files to help you get started:
+
+- **examples/simple_client.html** - Basic client example without authentication
+- **examples/secure_client.html** - Secure client with JWT authentication
+- **examples/turn_credentials_example.html** - Interactive TURN credentials test client
+
+Open any example in your browser and follow the on-screen instructions.
+
+## Resources
+
+- coturn GitHub: https://github.com/coturn/coturn
+- WebRTC samples: https://webrtc.github.io/samples/
+- TURN RFC: https://tools.ietf.org/html/rfc5766
+- FastAPI documentation: https://fastapi.tiangolo.com/
+
+## Important Notes
+
+1. **Never commit** `.env`, `users.csv`, or `ssl/` files to git
+2. **Never share** private keys or passwords
+3. **Regularly rotate** secrets and passwords
+4. **Monitor logs** for security issues
+5. **Keep dependencies** updated for security patches
 
 ## License
 
