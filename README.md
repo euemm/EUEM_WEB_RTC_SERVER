@@ -69,8 +69,8 @@ EUEM_WEB_RTC_SERVER/
 ├── users.csv                       # User credentials (auto-generated)
 ├── .env                            # Environment configuration
 ├── requirements.txt                # Python dependencies
-├── start_server.sh                 # Basic server startup
-├── start_secure_server.sh          # Secure server startup
+├── start_dev.sh                    # Development server startup (HTTP)
+├── start_prod.sh                   # Production server startup (HTTPS)
 └── README.md                       # This file
 ```
 
@@ -182,14 +182,22 @@ The following sensitive files are automatically ignored by git:
 
 #### 1. SSL Certificates (for HTTPS/WSS)
 
-The server will automatically generate self-signed certificates for development:
+The server will automatically generate self-signed certificates when needed:
 
 ```bash
-# Certificates are generated automatically on first run
-./start_secure_server.sh
+# For development (HTTP only, no SSL needed)
+./start_dev.sh
+
+# For production (requires SSL certificates)
+# Place your SSL certificates in ssl/ directory first, then:
+./start_prod.sh
 ```
 
-For production, replace the auto-generated certificates in `ssl/` with real certificates from a trusted CA.
+For production, provide real certificates from a trusted CA in the `ssl/` directory.
+For testing, you can generate self-signed certificates:
+```bash
+python3 -c "from src.security.ssl_config import ssl_manager; ssl_manager.generate_self_signed_cert()"
+```
 
 #### 2. User Management
 
