@@ -208,6 +208,52 @@ Default users are created automatically in `users.csv`:
 
 **Important**: Change these passwords in production!
 
+##### User Management Script
+
+A convenient Python script is provided to add or remove users from the CSV file:
+
+**Add a user**:
+```bash
+python manage_users.py add username:password
+```
+
+**Add a user with custom email**:
+```bash
+python manage_users.py add username:password:email@example.com
+```
+
+**Remove a user**:
+```bash
+python manage_users.py remove username
+```
+
+**List all users**:
+```bash
+python manage_users.py list
+```
+
+**Examples**:
+```bash
+# Add a new user
+python manage_users.py add alice:securePassword123
+
+# Add a user with custom email
+python manage_users.py add bob:anotherSecure456:bob@company.com
+
+# Remove a user
+python manage_users.py remove alice
+
+# List all users
+python manage_users.py list
+```
+
+The script automatically:
+- Hashes passwords using bcrypt (same as the authentication system)
+- Generates default email addresses (`username@example.com`) if not specified
+- Validates username (minimum 3 characters) and password (minimum 6 characters)
+- Prevents duplicate usernames
+- Sets users as active by default
+
 #### 3. File Permissions
 
 Secure sensitive files:
