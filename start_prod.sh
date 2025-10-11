@@ -36,35 +36,26 @@ if [ ! -f "users.csv" ]; then
     exit 1
 fi
 
-# Load environment variables from .env file
-if [ -f ".env" ]; then
-    echo "Loading configuration from .env file..."
-    set -a  # automatically export all variables
-    source .env
-    set +a
-else
+# Check .env file exists
+if [ ! -f ".env" ]; then
     echo "Warning: .env file not found. Using default configuration."
     echo "For production, create .env file with proper configuration."
     echo ""
 fi
 
-# Set production-specific overrides (these take precedence over .env)
+# Set environment variables for production behind nginx
 export REQUIRE_HTTPS=false  # Nginx handles HTTPS
 export DEBUG=false
 
-# Set defaults if not defined in .env
-: ${HOST:=127.0.0.1}
-: ${PORT:=8000}
-
 echo "============================================"
 echo "Production Server Configuration:"
-echo "  - Running on: http://${HOST}:${PORT}"
+echo "  - Running on: http://127.0.0.1:8080"
 echo "  - SSL/TLS: Handled by Nginx"
 echo "  - Mode: Production"
 echo "============================================"
 echo ""
 echo "IMPORTANT: Ensure nginx is configured to:"
-echo "  - Proxy to http://${HOST}:${PORT}"
+echo "  - Proxy to http://127.0.0.1:8080"
 echo "  - Handle SSL/TLS termination"
 echo "  - Forward WebSocket connections"
 echo ""
@@ -76,8 +67,8 @@ echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-# Start the server (reads HOST and PORT from environment)
+# Start the server on localhost only (not exposed to internet)
 python3 -m uvicorn src.main:app \
-    --host ${HOST} \
-    --port ${PORT} \
+    --host 127.0.0.1 \
+    --port 8080 \
     --log-level info

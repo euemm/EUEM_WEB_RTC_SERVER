@@ -48,29 +48,17 @@ else
     echo ""
 fi
 
-# Load environment variables from .env file (if it exists)
-if [ -f ".env" ]; then
-    echo "Loading configuration from .env file..."
-    set -a  # automatically export all variables
-    source .env
-    set +a
-fi
-
-# Set development-specific overrides (these take precedence over .env)
+# Set development environment variables
 export REQUIRE_HTTPS=false
 export DEBUG=true
-
-# Set defaults if not defined in .env
-: ${HOST:=0.0.0.0}
-: ${PORT:=8000}
 
 # Start the development server (HTTP only)
 echo "Starting development server with HTTP/WS..."
 echo ""
-echo "  HTTP endpoint: http://localhost:${PORT}"
-echo "  WS endpoint: ws://localhost:${PORT}/ws/{room_id}"
-echo "  Auth endpoint: http://localhost:${PORT}/auth/login"
-echo "  API docs: http://localhost:${PORT}/docs"
+echo "  HTTP endpoint: http://localhost:8080"
+echo "  WS endpoint: ws://localhost:8080/ws/{room_id}"
+echo "  Auth endpoint: http://localhost:8080/auth/login"
+echo "  API docs: http://localhost:8080/docs"
 echo ""
 echo "Test credentials:"
 echo "  admin / admin123"
@@ -81,8 +69,8 @@ echo "Press Ctrl+C to stop the server"
 echo ""
 
 python3 -m uvicorn src.main:app \
-    --host ${HOST} \
-    --port ${PORT} \
+    --host 0.0.0.0 \
+    --port 8080 \
     --reload \
     --log-level debug
 
