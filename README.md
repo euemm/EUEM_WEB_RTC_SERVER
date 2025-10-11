@@ -70,7 +70,7 @@ EUEM_WEB_RTC_SERVER/
 ├── .env                            # Environment configuration
 ├── requirements.txt                # Python dependencies
 ├── start_dev.sh                    # Development server startup (HTTP)
-├── start_prod.sh                   # Production server startup (HTTPS)
+├── start_prod.sh                   # Production server startup (behind nginx)
 └── README.md                       # This file
 ```
 
@@ -123,7 +123,8 @@ All configuration is handled through environment variables in the `.env` file:
 |----------|---------|-------------|
 | `SECRET_KEY` | `your-secret-key-here` | General secret key |
 | `JWT_SECRET_KEY` | `your-jwt-secret-key` | JWT signing key |
-| `CORS_ORIGINS` | `https://localhost:3000` | Allowed origins |
+| `CORS_ORIGINS` | `["*"]` | Allowed origins (`["*"]` allows all, or specify array of URLs) |
+| `CORS_ALLOW_CREDENTIALS` | `true` | Allow credentials in CORS requests |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Rate limit per IP |
 
 ### WebSocket Configuration
@@ -140,13 +141,39 @@ All configuration is handled through environment variables in the `.env` file:
 | `TURNSERVER_URLS` | `[]` | List of TURN server URLs (supports TURN and TURNS) |
 | `TURNSERVER_TTL` | `86400` | Credential validity period in seconds (default: 24 hours) |
 
+### CORS Configuration Options
+
+**Option 1: Allow All Origins (Recommended for Multiple Clients)**
+
+When you have multiple clients connecting from different addresses:
+```bash
+CORS_ORIGINS=["*"]
+CORS_ALLOW_CREDENTIALS=true
+```
+
+This allows clients to connect from any domain or IP address.
+
+**Option 2: Restrict to Specific Domains**
+
+When you know the exact domains clients will use:
+```bash
+CORS_ORIGINS=["https://yourdomain.com", "https://app.yourdomain.com"]
+CORS_ALLOW_CREDENTIALS=true
+```
+
+**Security Note**: JWT authentication still protects your server even with `CORS_ORIGINS=["*"]`. Only authenticated users with valid tokens can access the signaling server. CORS restrictions are primarily a browser security feature, and WebRTC applications often require flexible CORS due to peer-to-peer nature.
+
 ### Example Production .env
 ```bash
 HOST=0.0.0.0
 PORT=8000
 DEBUG=false
 REQUIRE_HTTPS=true
-CORS_ORIGINS=["https://yourdomain.com"]
+
+# Allow all origins for flexible client access
+CORS_ORIGINS=["*"]
+CORS_ALLOW_CREDENTIALS=true
+
 SECRET_KEY=your-256-bit-secret-key-here
 JWT_SECRET_KEY=your-different-jwt-secret-key-here
 LOG_LEVEL=INFO
@@ -182,21 +209,13 @@ The following sensitive files are automatically ignored by git:
 
 #### 1. SSL Certificates (for HTTPS/WSS)
 
-The server will automatically generate self-signed certificates when needed:
+For production, nginx handles SSL/TLS termination and proxies to your FastAPI application. This provides easier certificate management with certbot and better performance.
 
+See "Production Deployment with Nginx" section below for setup instructions.
+
+For development (HTTP only, no SSL needed):
 ```bash
-# For development (HTTP only, no SSL needed)
 ./start_dev.sh
-
-# For production (requires SSL certificates)
-# Place your SSL certificates in ssl/ directory first, then:
-./start_prod.sh
-```
-
-For production, provide real certificates from a trusted CA in the `ssl/` directory.
-For testing, you can generate self-signed certificates:
-```bash
-python3 -c "from src.security.ssl_config import ssl_manager; ssl_manager.generate_self_signed_cert()"
 ```
 
 #### 2. User Management
@@ -297,16 +316,17 @@ Before deploying to production:
 
 ### Starting the Server
 
-#### Production Server (HTTPS/WSS only)
+#### Production Server (Behind Nginx)
 ```bash
 ./start_prod.sh
 ```
-- Runs with HTTPS/WSS encryption only
+- Runs on HTTP at `http://127.0.0.1:8000` (localhost only)
+- Nginx handles HTTPS/WSS encryption
 - JWT authentication required
-- Requires valid SSL certificates in `ssl/` directory
+- Requires nginx configured with SSL certificates
 - Requires `users.csv` with production credentials
 - DDoS protection enabled
-- Access at `https://0.0.0.0:8000`
+- Access via nginx at `https://your-domain.com`
 
 #### Development Server (HTTP/WS)
 ```bash
@@ -321,8 +341,8 @@ Before deploying to production:
 
 #### Manual Startup
 ```bash
-# Production server (HTTPS only)
-python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile ssl/server.key --ssl-certfile ssl/server.crt --log-level info
+# Production server (behind nginx)
+python3 -m uvicorn src.main:app --host 127.0.0.1 --port 8000 --log-level info
 
 # Development server (HTTP)
 python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
@@ -771,6 +791,224 @@ The security features add minimal overhead:
 
 ## Production Deployment
 
+### Deployment with Nginx
+
+Production deployments use nginx for SSL/TLS termination and reverse proxying to your FastAPI application.
+
+#### 1. Install Nginx
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install nginx
+```
+
+**CentOS/RHEL:**
+```bash
+sudo yum install nginx
+```
+
+#### 2. Obtain SSL Certificates with Certbot
+
+**Install certbot:**
+```bash
+# Ubuntu/Debian
+sudo apt-get install certbot python3-certbot-nginx
+
+# CentOS/RHEL
+sudo yum install certbot python3-certbot-nginx
+```
+
+**Get certificate:**
+```bash
+# Stop nginx temporarily
+sudo systemctl stop nginx
+
+# Obtain certificate (replace with your domain)
+sudo certbot certonly --standalone -d webrtc.yourdomain.com
+
+# Start nginx
+sudo systemctl start nginx
+```
+
+Certificates will be saved to:
+- Certificate: `/etc/letsencrypt/live/webrtc.yourdomain.com/fullchain.pem`
+- Private Key: `/etc/letsencrypt/live/webrtc.yourdomain.com/privkey.pem`
+
+#### 3. Configure Nginx
+
+Create nginx configuration file:
+```bash
+sudo nano /etc/nginx/sites-available/webrtc-signaling
+```
+
+Add this configuration (replace `your-domain.com` with your actual domain):
+
+```nginx
+# Redirect HTTP to HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name your-domain.com;
+    
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    
+    location / {
+        return 301 https://$server_name$request_uri;
+    }
+}
+
+# HTTPS server with WebSocket support
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name your-domain.com;
+    
+    # SSL certificates (managed by certbot)
+    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+    
+    # SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    
+    # Proxy to FastAPI
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # Timeouts for WebSocket
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+}
+```
+
+Enable the site:
+```bash
+sudo ln -s /etc/nginx/sites-available/webrtc-signaling /etc/nginx/sites-enabled/
+```
+
+Test nginx configuration:
+```bash
+sudo nginx -t
+```
+
+Reload nginx:
+```bash
+sudo systemctl reload nginx
+```
+
+#### 4. Configure Environment Variables
+
+Update your `.env` file:
+```bash
+HOST=127.0.0.1          # Listen on localhost only
+PORT=8000               # Port for FastAPI
+REQUIRE_HTTPS=false     # Nginx handles HTTPS
+DEBUG=false             # Production mode
+
+# Change these to secure values
+SECRET_KEY=your-256-bit-secret-key
+JWT_SECRET_KEY=your-different-256-bit-jwt-key
+
+# Update with your domain or use ["*"] for all origins
+CORS_ORIGINS=["https://yourdomain.com"]
+```
+
+#### 5. Start the Application
+
+```bash
+./start_prod.sh
+```
+
+Your server will be running on `http://127.0.0.1:8000` (not accessible from outside).
+Access it via nginx at `https://yourdomain.com`.
+
+#### 6. Set Up Auto-Renewal for SSL Certificates
+
+Test renewal:
+```bash
+sudo certbot renew --dry-run
+```
+
+Enable automatic renewal:
+```bash
+# Certbot timer is usually enabled by default on Ubuntu
+sudo systemctl status certbot.timer
+
+# If not enabled:
+sudo systemctl enable certbot.timer
+sudo systemctl start certbot.timer
+```
+
+#### 7. Create Systemd Service (Optional but Recommended)
+
+Create a systemd service file:
+```bash
+sudo nano /etc/systemd/system/webrtc-signaling.service
+```
+
+Add this content:
+```ini
+[Unit]
+Description=WebRTC Signaling Server
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/path/to/EUEM_WEB_RTC_SERVER
+Environment="PATH=/path/to/EUEM_WEB_RTC_SERVER/venv/bin"
+ExecStart=/path/to/EUEM_WEB_RTC_SERVER/venv/bin/python3 -m uvicorn src.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable webrtc-signaling
+sudo systemctl start webrtc-signaling
+sudo systemctl status webrtc-signaling
+```
+
+#### Testing Your Deployment
+
+```bash
+# Test health endpoint
+curl https://yourdomain.com/health
+
+# Test WebSocket (requires wscat: npm install -g wscat)
+wscat -c wss://yourdomain.com/ws/testroom
+
+# Check nginx logs
+sudo tail -f /var/log/nginx/webrtc-signaling-access.log
+sudo tail -f /var/log/nginx/webrtc-signaling-error.log
+
+# Check application logs
+tail -f server.log
+```
+
 ### Pre-deployment Checklist
 
 1. **Security**
@@ -778,9 +1016,11 @@ The security features add minimal overhead:
    - [ ] Change `SECRET_KEY` to a secure value
    - [ ] Change `JWT_SECRET_KEY` to a secure value
    - [ ] Configure proper `CORS_ORIGINS`
-   - [ ] Install production SSL certificates
+   - [ ] Obtain SSL certificates (via certbot)
+   - [ ] Configure nginx properly
    - [ ] Change all default passwords in `users.csv`
-   - [ ] Set `REQUIRE_HTTPS=true`
+   - [ ] Set `HOST=127.0.0.1` when behind nginx
+   - [ ] Set `REQUIRE_HTTPS=false` when behind nginx
 
 2. **TURN Server**
    - [ ] Set strong `TURNSERVER_SECRET`

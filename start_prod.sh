@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Production WebRTC Signaling Server
-# HTTPS/WSS only - Secure production deployment
+# WebRTC Signaling Server - Production Mode
+# Runs behind Nginx (Nginx handles SSL/TLS termination)
+# This script starts the server on HTTP (localhost only)
 
 echo "Starting WebRTC Signaling Server (Production Mode)..."
 echo ""
@@ -24,35 +25,13 @@ if [ $? -ne 0 ]; then
     fi
 fi
 
-# Check for SSL certificates
-if [ ! -f "ssl/server.crt" ] || [ ! -f "ssl/server.key" ]; then
-    echo "Error: SSL certificates not found in ssl/ directory"
-    echo ""
-    echo "For production deployment, you must provide valid SSL certificates:"
-    echo "  1. Obtain certificates from a trusted CA (e.g., Let's Encrypt)"
-    echo "  2. Place cert.pem in ssl/server.crt"
-    echo "  3. Place privkey.pem in ssl/server.key"
-    echo ""
-    echo "For testing only, you can generate self-signed certificates:"
-    echo "  python3 -c 'from src.security.ssl_config import ssl_manager; ssl_manager.generate_self_signed_cert()'"
-    echo ""
-    exit 1
-fi
-
-# Verify SSL certificates are readable
-if [ ! -r "ssl/server.crt" ] || [ ! -r "ssl/server.key" ]; then
-    echo "Error: SSL certificates exist but are not readable"
-    echo "Check file permissions: chmod 644 ssl/server.crt && chmod 600 ssl/server.key"
-    exit 1
-fi
-
 # Check if users.csv exists
 if [ ! -f "users.csv" ]; then
     echo "Error: users.csv not found"
     echo "Please create users.csv with your production user credentials"
     echo ""
-    echo "To create users.csv with default users (NOT RECOMMENDED FOR PRODUCTION):"
-    echo "  python3 -c 'from src.auth.jwt_handler import user_manager; user_manager.create_default_users()'"
+    echo "To add users, use the manage_users.py script:"
+    echo "  python manage_users.py add username:password"
     echo ""
     exit 1
 fi
@@ -64,24 +43,32 @@ if [ ! -f ".env" ]; then
     echo ""
 fi
 
-# Set production environment variables
-export REQUIRE_HTTPS=true
+# Set environment variables for production behind nginx
+export REQUIRE_HTTPS=false  # Nginx handles HTTPS
 export DEBUG=false
 
-# Start the production server with SSL/TLS
-echo "Starting production server with HTTPS/WSS..."
+echo "============================================"
+echo "Production Server Configuration:"
+echo "  - Running on: http://127.0.0.1:8000"
+echo "  - SSL/TLS: Handled by Nginx"
+echo "  - Mode: Production"
+echo "============================================"
 echo ""
-echo "  HTTPS endpoint: https://0.0.0.0:8000"
-echo "  WSS endpoint: wss://0.0.0.0:8000/ws/{room_id}"
-echo "  Auth endpoint: https://0.0.0.0:8000/auth/login"
+echo "IMPORTANT: Ensure nginx is configured to:"
+echo "  - Proxy to http://127.0.0.1:8000"
+echo "  - Handle SSL/TLS termination"
+echo "  - Forward WebSocket connections"
+echo ""
+echo "Endpoints accessible through nginx:"
+echo "  - Health: https://your-domain.com/health"
+echo "  - Auth: https://your-domain.com/auth/login"
+echo "  - WebSocket: wss://your-domain.com/ws/{room_id}"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
+# Start the server on localhost only (not exposed to internet)
 python3 -m uvicorn src.main:app \
-    --host 0.0.0.0 \
+    --host 127.0.0.1 \
     --port 8000 \
-    --ssl-keyfile ssl/server.key \
-    --ssl-certfile ssl/server.crt \
     --log-level info
-
