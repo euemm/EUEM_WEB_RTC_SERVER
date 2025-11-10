@@ -576,6 +576,17 @@ Authorization: Bearer {jwt_token}
 **Cause**: Firewall blocking TURN ports
 **Solution**: Open ports 3478 (TURN) and 5349 (TURNS) in firewall
 
+## Testing
+
+- Activate the virtual environment (`source venv/bin/activate`).
+- Export `PYTHONPATH` to point at the project root so `src` is resolvable: `export PYTHONPATH=$PWD`.
+- Run targeted suites:
+  - Database connectivity: `python -m pytest tests/test_database_connection.py`
+  - TURN credential flow: `python -m pytest tests/test_turn_credentials.py`
+  - WebSocket handler logic: `python -m pytest tests/test_websocket_handler.py`
+- To execute the common suites at once, use `./scripts/run_tests.sh`. The script activates `venv`, exports `PYTHONPATH`, and defaults to the three core test modules (pass a custom argument list to override).
+- Test fixtures seed the PostgreSQL database with `admin`/`user1` accounts; ensure those tables exist and the `.env` connection values point to a reachable instance before running pytest.
+
 ## WebSocket Client Implementation
 
 ### Basic Client Example
