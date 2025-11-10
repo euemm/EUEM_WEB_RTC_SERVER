@@ -215,7 +215,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             
             username = payload.get("sub")
             from .auth.jwt_handler import user_manager
-            user = user_manager.get_user(username)
+            user = await user_manager.get_user(username)
             if not user or not user.is_active:
                 ddos_protection.record_auth_failure(client_ip)
                 await websocket.close(code=1008, reason="User not found or inactive")

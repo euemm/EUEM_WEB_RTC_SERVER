@@ -3,18 +3,22 @@ JWT Authentication Handler
 Handles JWT token creation, validation, and user authentication
 """
 
+from __future__ import annotations
+
+import logging
 import os
-import csv
-import hashlib
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List
+from typing import Dict, Optional
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import HTTPException, status, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from ..utils.db import get_db_pool
+
+# Password hashing (bcrypt cost factor 10)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__default_rounds=10)
 
 # JWT Configuration
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-super-secret-jwt-key-change-this-in-production")
@@ -24,159 +28,99 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # Security scheme
 security = HTTPBearer()
 
+logger = logging.getLogger(__name__)
+
+
 class User:
     """User model for authentication"""
-    def __init__(self, username: str, email: str, hashed_password: str, is_active: bool = True):
-        self.username = username
+
+    def __init__(
+        self,
+        user_id: str,
+        email: str,
+        hashed_password: str,
+        is_verified: bool,
+        is_enabled: bool,
+    ) -> None:
+        self.id = user_id
         self.email = email
+        self.username = email  # maintain backwards compatibility with existing code
         self.hashed_password = hashed_password
-        self.is_active = is_active
+        self.is_verified = is_verified
+        self.is_enabled = is_enabled
+
+    @property
+    def is_active(self) -> bool:
+        return self.is_enabled and self.is_verified
+
 
 class UserManager:
-    """Manages user data from CSV file"""
-    
-    def __init__(self, csv_file: str = "users.csv"):
-        self.csv_file = csv_file
-        self.users: Dict[str, User] = {}
-        self.load_users()
-    
-    def load_users(self):
-        """Load users from CSV file"""
-        if not os.path.exists(self.csv_file):
-            # Create default users file
-            self.create_default_users()
-        
-        with open(self.csv_file, 'r', newline='') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                user = User(
-                    username=row['username'],
-                    email=row['email'],
-                    hashed_password=row['hashed_password'],
-                    is_active=row.get('is_active', 'true').lower() == 'true'
-                )
-                self.users[user.username] = user
-    
-    def create_default_users(self):
-        """Create default users.csv file"""
-        try:
-            default_users = [
-                {
-                    'username': 'admin',
-                    'email': 'admin@example.com',
-                    'hashed_password': pwd_context.hash('admin123'),
-                    'is_active': 'true'
-                },
-                {
-                    'username': 'user1',
-                    'email': 'user1@example.com',
-                    'hashed_password': pwd_context.hash('password123'),
-                    'is_active': 'true'
-                },
-                {
-                    'username': 'user2',
-                    'email': 'user2@example.com',
-                    'hashed_password': pwd_context.hash('password123'),
-                    'is_active': 'true'
-                }
-            ]
-        except Exception as e:
-            print(f"Error creating password hashes: {e}")
-            print("Falling back to simple hash for development...")
-            # Fallback to simple hash for development
-            import hashlib
-            def simple_hash(password):
-                return hashlib.sha256(password.encode()).hexdigest()
-            
-            default_users = [
-                {
-                    'username': 'admin',
-                    'email': 'admin@example.com',
-                    'hashed_password': simple_hash('admin123'),
-                    'is_active': 'true'
-                },
-                {
-                    'username': 'user1',
-                    'email': 'user1@example.com',
-                    'hashed_password': simple_hash('password123'),
-                    'is_active': 'true'
-                },
-                {
-                    'username': 'user2',
-                    'email': 'user2@example.com',
-                    'hashed_password': simple_hash('password123'),
-                    'is_active': 'true'
-                }
-            ]
-        
-        with open(self.csv_file, 'w', newline='') as file:
-            fieldnames = ['username', 'email', 'hashed_password', 'is_active']
-            writer = csv.DictWriter(file, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(default_users)
-    
-    def get_user(self, username: str) -> Optional[User]:
-        """Get user by username"""
-        return self.users.get(username)
-    
-    def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        """Verify password against hash"""
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"=== PASSWORD VERIFICATION ===")
-        logger.info(f"Plain password length: {len(plain_password)}")
-        logger.info(f"Hashed password length: {len(hashed_password)}")
-        logger.info(f"Hashed password starts with: {hashed_password[:20]}...")
-        
-        try:
-            logger.info("Attempting bcrypt verification")
-            result = pwd_context.verify(plain_password, hashed_password)
-            logger.info(f"Bcrypt verification result: {result}")
-            return result
-        except Exception as e:
-            logger.warning(f"Bcrypt verification failed: {e}")
-            logger.info("Falling back to simple hash verification")
-            # Fallback for simple hash (development only)
-            import hashlib
-            simple_hash = hashlib.sha256(plain_password.encode()).hexdigest()
-            result = simple_hash == hashed_password
-            logger.info(f"Simple hash verification result: {result}")
-            return result
-    
-    def authenticate_user(self, username: str, password: str) -> Optional[User]:
-        """Authenticate user credentials"""
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"=== USER AUTHENTICATION ===")
-        logger.info(f"Looking up user: {username}")
-        
-        user = self.get_user(username)
-        logger.info(f"User found: {user is not None}")
-        
-        if not user:
-            logger.warning(f"User not found: {username}")
+    """Manages user data from PostgreSQL"""
+
+    def __init__(self) -> None:
+        self.logger = logging.getLogger(__name__)
+
+    async def get_user(self, email: str) -> Optional[User]:
+        """Fetch a user by email from the database."""
+        pool = await get_db_pool()
+        query = """
+            SELECT id, email::text AS email, password, is_verified, is_enabled
+            FROM users
+            WHERE email = $1
+        """
+        row = await pool.fetchrow(query, email)
+        if row is None:
             return None
-            
-        if not user.is_active:
-            logger.warning(f"User inactive: {username}")
+        return User(
+            user_id=str(row["id"]),
+            email=row["email"],
+            hashed_password=row["password"],
+            is_verified=row["is_verified"],
+            is_enabled=row["is_enabled"],
+        )
+
+    async def verify_password(self, plain_password: str, hashed_password: str) -> bool:
+        """Verify password against stored bcrypt hash."""
+        self.logger.info("=== PASSWORD VERIFICATION ===")
+        self.logger.info("Plain password length: %s", len(plain_password))
+        self.logger.info("Hashed password starts with: %s", hashed_password[:20])
+        return pwd_context.verify(plain_password, hashed_password)
+
+    async def authenticate_user(self, email: str, password: str) -> Optional[User]:
+        """Authenticate user credentials against the database."""
+        self.logger.info("=== USER AUTHENTICATION ===")
+        self.logger.info("Looking up user: %s", email)
+
+        user = await self.get_user(email)
+        self.logger.info("User found: %s", user is not None)
+
+        if user is None:
+            self.logger.warning("User not found: %s", email)
             return None
-            
-        logger.info(f"User is active, verifying password for: {username}")
-        if not self.verify_password(password, user.hashed_password):
-            logger.warning(f"Password verification failed for: {username}")
+
+        if not user.is_enabled:
+            self.logger.warning("User disabled: %s", email)
             return None
-            
-        logger.info(f"Authentication successful for: {username}")
+
+        if not user.is_verified:
+            self.logger.warning("User not verified: %s", email)
+            return None
+
+        self.logger.info("User is active, verifying password for: %s", email)
+        if not await self.verify_password(password, user.hashed_password):
+            self.logger.warning("Password verification failed for: %s", email)
+            return None
+
+        self.logger.info("Authentication successful for: %s", email)
         return user
+
 
 class JWTHandler:
     """Handles JWT token operations"""
-    
+
     def __init__(self, user_manager: UserManager):
         self.user_manager = user_manager
-    
+
     def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None) -> str:
         """Create JWT access token"""
         to_encode = data.copy()
@@ -184,11 +128,11 @@ class JWTHandler:
             expire = datetime.utcnow() + expires_delta
         else:
             expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        
+
         to_encode.update({"exp": expire})
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt
-    
+
     def verify_token(self, token: str) -> Optional[Dict]:
         """Verify and decode JWT token"""
         try:
@@ -199,39 +143,41 @@ class JWTHandler:
             return payload
         except JWTError:
             return None
-    
-    def get_current_user(self, credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
+
+    async def get_current_user(self, credentials: HTTPAuthorizationCredentials) -> User:
         """Get current authenticated user from JWT token"""
         credentials_exception = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-        
+
         try:
             token = credentials.credentials
             payload = self.verify_token(token)
             if payload is None:
                 raise credentials_exception
-            
+
             username: str = payload.get("sub")
             if username is None:
                 raise credentials_exception
-                
+
         except JWTError:
             raise credentials_exception
-        
-        user = self.user_manager.get_user(username=username)
+
+        user = await self.user_manager.get_user(email=username)
         if user is None or not user.is_active:
             raise credentials_exception
-            
+
         return user
+
 
 # Global instances
 user_manager = UserManager()
 jwt_handler = JWTHandler(user_manager)
 
+
 # Dependency for getting current user
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
     """FastAPI dependency to get current authenticated user"""
-    return jwt_handler.get_current_user(credentials)
+    return await jwt_handler.get_current_user(credentials)

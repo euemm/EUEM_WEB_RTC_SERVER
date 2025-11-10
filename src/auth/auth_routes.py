@@ -30,7 +30,7 @@ class UserResponse(BaseModel):
     is_active: bool
 
 class LoginRequest(BaseModel):
-    username: str
+    username: str  # email value
     password: str
 
 class TurnCredentials(BaseModel):
@@ -51,7 +51,7 @@ async def login(login_data: LoginRequest):
     
     try:
         logger.info("Calling user_manager.authenticate_user()")
-        user = user_manager.authenticate_user(login_data.username, login_data.password)
+        user = await user_manager.authenticate_user(login_data.username, login_data.password)
         logger.info(f"Authentication result: {user is not None}")
         
         if not user:
@@ -86,7 +86,7 @@ async def login(login_data: LoginRequest):
 @router.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     """OAuth2 compatible token endpoint"""
-    user = user_manager.authenticate_user(form_data.username, form_data.password)
+    user = await user_manager.authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

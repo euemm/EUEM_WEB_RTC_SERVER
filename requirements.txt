@@ -35,3 +35,4 @@ cryptography>=40.0.0
 
 # SSL/TLS Support
 pyOpenSSL>=23.0.0
+asyncpg==0.29.0
