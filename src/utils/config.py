@@ -3,68 +3,70 @@ Configuration Management
 Handles application configuration using environment variables
 """
 
-import os
-from typing import List
-from pydantic import Field
+from __future__ import annotations
 
-try:
-    from pydantic_settings import BaseSettings
-except ImportError:
-    from pydantic import BaseSettings
+from typing import List
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
-    
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
     # Server Configuration
-    host: str = Field(default="0.0.0.0", env="HOST")
-    port: int = Field(default=8000, env="PORT")
-    debug: bool = Field(default=False, env="DEBUG")
-    
+    host: str = "0.0.0.0"
+    port: int = 8000
+    debug: bool = False
+
     # WebSocket Configuration
-    websocket_timeout: int = Field(default=30, env="WEBSOCKET_TIMEOUT")
-    max_connections_per_room: int = Field(default=10, env="MAX_CONNECTIONS_PER_ROOM")
-    
+    websocket_timeout: int = 30
+    max_connections_per_room: int = 10
+
     # CORS Configuration
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
-    cors_allow_credentials: bool = Field(default=True, env="CORS_ALLOW_CREDENTIALS")
-    
+    cors_allow_credentials: bool = True
+
     # Logging Configuration
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
+    log_level: str = "INFO"
 
     # Database Configuration
-    db_host: str = Field(default="localhost", env="DB_HOST")
-    db_port: int = Field(default=5432, env="DB_PORT")
-    db_name: str = Field(default="euem_db", env="DB_NAME")
-    db_user: str = Field(default="euem", env="DB_USER")
-    db_password: str = Field(default="", env="DB_PASSWORD")
-    db_pool_min_size: int = Field(default=1, env="DB_POOL_MIN")
-    db_pool_max_size: int = Field(default=10, env="DB_POOL_MAX")
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_name: str = "euem_db"
+    db_user: str = "euem"
+    db_password: str = ""
+    db_pool_min_size: int = 1
+    db_pool_max_size: int = 10
 
     # Security Configuration
-    secret_key: str = Field(default="your-secret-key-here", env="SECRET_KEY")
-    jwt_secret_key: str = Field(default="your-jwt-secret-key-change-this-in-production", env="JWT_SECRET_KEY")
+    secret_key: str = "your-secret-key-here"
+    jwt_secret_key: str = "your-jwt-secret-key-change-this-in-production"
     allowed_rooms: List[str] = Field(default_factory=list)  # Empty means all rooms allowed
-    require_https: bool = Field(default=True, env="REQUIRE_HTTPS")
-    
+    require_https: bool = True
+
     # Rate Limiting
-    rate_limit_per_minute: int = Field(default=60, env="RATE_LIMIT_PER_MINUTE")
-    
+    rate_limit_per_minute: int = 60
+
     # Health Check
-    health_check_interval: int = Field(default=30, env="HEALTH_CHECK_INTERVAL")
-    
+    health_check_interval: int = 30
+
     # TURN Server Configuration
-    turnserver_secret: str = Field(default="", env="TURNSERVER_SECRET")
-    turnserver_url: str = Field(default="", env="TURNSERVER_URL")
+    turnserver_secret: str = ""
+    turnserver_url: str = ""
     turnserver_urls: List[str] = Field(default_factory=list)
-    turnserver_ttl: int = Field(default=86400, env="TURNSERVER_TTL")  # 24 hours default
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    turnserver_ttl: int = 86400  # 24 hours default
+
 
 # Global settings instance
-_settings: Settings = None
+_settings: Settings | None = None
+
 
 def get_settings() -> Settings:
     """Get application settings singleton"""
@@ -73,7 +75,8 @@ def get_settings() -> Settings:
         _settings = Settings()
     return _settings
 
-def reload_settings():
+
+def reload_settings() -> Settings:
     """Reload settings from environment"""
     global _settings
     _settings = Settings()

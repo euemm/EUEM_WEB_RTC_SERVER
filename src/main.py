@@ -22,6 +22,7 @@ from .auth.auth_routes import router as auth_router
 from .auth.jwt_handler import get_current_user, User
 from .security.rate_limiter import get_rate_limiter, get_ddos_protection, custom_rate_limit_handler
 from .security.ssl_config import get_ssl_context, verify_ssl_setup
+from .utils.db import close_db_pool
 
 # Configure detailed logging
 logging.basicConfig(
@@ -133,6 +134,10 @@ ddos_protection = get_ddos_protection()
 
 # Include authentication routes
 app.include_router(auth_router)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_db_pool()
 
 @app.get("/")
 async def root():

@@ -1,7 +1,0 @@
-{
-  "name": "euem-web-rtc-server",
-  "private": true,
-  "scripts": {
-    "test": "pytest"
-  }
-}
