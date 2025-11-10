@@ -14,6 +14,7 @@ from fastapi.security import HTTPBearer
 from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel
 import uvicorn
+from contextlib import asynccontextmanager
 
 from .handlers.websocket_handler import WebSocketHandler
 from .models.signal_data import SignalData
@@ -39,14 +40,23 @@ logger = logging.getLogger(__name__)
 logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
 logging.getLogger("uvicorn.error").setLevel(logging.DEBUG)
 
-# Get settings
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        yield
+    finally:
+        await close_db_pool()
+
 
 # Initialize FastAPI app with rate limiting
 app = FastAPI(
     title="WebRTC Signaling Server",
     description="A secure signaling server for WebRTC peer-to-peer connections",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Add rate limiting
@@ -134,10 +144,6 @@ ddos_protection = get_ddos_protection()
 
 # Include authentication routes
 app.include_router(auth_router)
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await close_db_pool()
 
 @app.get("/")
 async def root():

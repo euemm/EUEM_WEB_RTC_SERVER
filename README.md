@@ -66,7 +66,6 @@ EUEM_WEB_RTC_SERVER/
 │   ├── simple_client.html          # Basic client example
 │   ├── secure_client.html          # Secure client with auth
 │   └── turn_credentials_example.html # TURN credentials example
-├── users.csv                       # User credentials (auto-generated)
 ├── .env                            # Environment configuration
 ├── requirements.txt                # Python dependencies
 ├── start_dev.sh                    # Development server startup (HTTP)
@@ -196,7 +195,7 @@ The following sensitive files are automatically ignored by git:
 - `*.crt`, `*.key`, `*.pem`, `*.p12`, `*.pfx` files
 
 #### User Data
-- `users.csv` - Contains user credentials and password hashes
+- Database credentials stored in `.env`
 - `user_data/` directory
 - `auth_data/` directory
 
@@ -218,74 +217,21 @@ For development (HTTP only, no SSL needed):
 
 #### 2. User Management
 
-Default users are created automatically in `users.csv`:
-- `admin` / `admin123`
-- `user1` / `password123`
-- `user2` / `password123`
+Application users now live in the PostgreSQL `users` table. Seed accounts by running SQL against your development database, or using your preferred administration tool. Each row should contain a bcrypt-hashed password, and you must associate roles via the `user_roles` table. See `tests/conftest.py` for an example of how test fixtures insert default `admin` and `user1` records programmatically.
 
-**Important**: Change these passwords in production!
+#### 3. Database-backed Authentication Overview
 
-##### User Management Script
-
-A convenient Python script is provided to add or remove users from the CSV file:
-
-**Add a user**:
-```bash
-python manage_users.py add username:password
-```
-
-**Add a user with custom email**:
-```bash
-python manage_users.py add username:password:email@example.com
-```
-
-**Remove a user**:
-```bash
-python manage_users.py remove username
-```
-
-**List all users**:
-```bash
-python manage_users.py list
-```
-
-**Examples**:
-```bash
-# Add a new user
-python manage_users.py add alice:securePassword123
-
-# Add a user with custom email
-python manage_users.py add bob:anotherSecure456:bob@company.com
-
-# Remove a user
-python manage_users.py remove alice
-
-# List all users
-python manage_users.py list
-```
-
-The script automatically:
-- Hashes passwords using bcrypt (same as the authentication system)
-- Generates default email addresses (`username@example.com`) if not specified
-- Validates username (minimum 3 characters) and password (minimum 6 characters)
-- Prevents duplicate usernames
-- Sets users as active by default
-
-#### 3. File Permissions
-
-Secure sensitive files:
-```bash
-chmod 600 .env
-chmod 600 ssl/server.key
-chmod 644 ssl/server.crt
-chmod 644 users.csv
-```
+- Connection parameters are read from the `.env` file (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, optional pool sizing). The values are loaded through `pydantic-settings` in `src/utils/config.py`.
+- `src/utils/db.py` maintains an asyncpg connection pool keyed by event loop. Server code retrieves connections through `get_db_pool()` and `close_db_pool()` handles cleanup (wired into FastAPI lifespan events).
+- `src/auth/jwt_handler.py` replaces the CSV reader with PostgreSQL lookups. It fetches the user row, checks `is_enabled`/`is_verified`, and verifies passwords using Passlib’s bcrypt context (`bcrypt` cost factor 10) against the stored hash.
+- FastAPI endpoints (`auth_routes.py`) and WebSocket authentication now rely on this database integration. The existing CSV scripts and runtime checks were removed.
+- Test data seeding lives in `tests/conftest.py`, which hashes sample credentials and inserts them into `users` and `user_roles` before pytest runs. Use that fixture as a template when seeding development or staging databases.
 
 ### Security Checklist
 
 Before deploying to production:
 
-- [ ] Changed all default passwords in `users.csv`
+- [ ] Seeded the PostgreSQL `users` table with strong credentials
 - [ ] Updated `SECRET_KEY` in `.env`
 - [ ] Updated `JWT_SECRET_KEY` in `.env`
 - [ ] Set `REQUIRE_HTTPS=true`
@@ -322,7 +268,7 @@ Before deploying to production:
 - Nginx handles HTTPS/WSS encryption
 - JWT authentication required
 - Requires nginx configured with SSL certificates
-- Requires `users.csv` with production credentials
+- Requires the PostgreSQL database to contain production credentials
 - DDoS protection enabled
 - Access via nginx at `https://your-domain.com`
 
@@ -809,7 +755,7 @@ Access it via nginx at `https://yourdomain.com`.
 - [ ] Set `DEBUG=false` in `.env`
 - [ ] Change `SECRET_KEY` and `JWT_SECRET_KEY` to secure values
 - [ ] Configure proper `CORS_ORIGINS`
-- [ ] Change all default passwords in `users.csv`
+- [ ] Seed secure user credentials in the PostgreSQL database
 - [ ] Configure nginx with SSL certificates
 - [ ] Set `HOST=127.0.0.1` and `PORT=8080` in `.env`
 - [ ] Set up TURN server (optional, for NAT traversal)
@@ -833,7 +779,7 @@ Open any example in your browser and follow the on-screen instructions.
 
 ## Important Notes
 
-1. **Never commit** `.env`, `users.csv`, or `ssl/` files to git
+1. **Never commit** `.env` or database dumps containing credentials, or `ssl/` files to git
 2. **Never share** private keys or passwords
 3. **Regularly rotate** secrets and passwords
 4. **Monitor logs** for security issues

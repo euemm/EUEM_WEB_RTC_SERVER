@@ -24,30 +24,6 @@ if [ $? -ne 0 ]; then
     fi
 fi
 
-# Create users.csv if it doesn't exist
-if [ ! -f "users.csv" ]; then
-    echo "Creating default users for development..."
-    python3 -c "
-from src.auth.jwt_handler import user_manager
-user_manager.create_default_users()
-" 2>/dev/null
-    if [ $? -eq 0 ]; then
-        echo "Default users created successfully:"
-        echo "  admin / admin123"
-        echo "  user1 / password123"
-        echo "  user2 / password123"
-        echo ""
-        echo "WARNING: These are test credentials for development only!"
-        echo "         Do NOT use in production!"
-        echo ""
-    else
-        echo "Warning: Could not create default users"
-    fi
-else
-    echo "Using existing users.csv"
-    echo ""
-fi
-
 # Set development environment variables
 export REQUIRE_HTTPS=false
 export DEBUG=true
@@ -60,11 +36,7 @@ echo "  WS endpoint: ws://localhost:8080/ws/{room_id}"
 echo "  Auth endpoint: http://localhost:8080/auth/login"
 echo "  API docs: http://localhost:8080/docs"
 echo ""
-echo "Test credentials:"
-echo "  admin / admin123"
-echo "  user1 / password123"
-echo "  user2 / password123"
-echo ""
+echo "Ensure your Postgres database contains the desired user accounts."
 echo "Press Ctrl+C to stop the server"
 echo ""
 

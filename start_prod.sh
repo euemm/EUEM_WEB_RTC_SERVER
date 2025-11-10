@@ -25,17 +25,6 @@ if [ $? -ne 0 ]; then
     fi
 fi
 
-# Check if users.csv exists
-if [ ! -f "users.csv" ]; then
-    echo "Error: users.csv not found"
-    echo "Please create users.csv with your production user credentials"
-    echo ""
-    echo "To add users, use the manage_users.py script:"
-    echo "  python manage_users.py add username:password"
-    echo ""
-    exit 1
-fi
-
 # Check .env file exists
 if [ ! -f ".env" ]; then
     echo "Warning: .env file not found. Using default configuration."
@@ -63,6 +52,8 @@ echo "Endpoints accessible through nginx:"
 echo "  - Health: https://your-domain.com/health"
 echo "  - Auth: https://your-domain.com/auth/login"
 echo "  - WebSocket: wss://your-domain.com/ws/{room_id}"
+echo ""
+echo "Ensure the Postgres database contains the production user accounts necessary for authentication."
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
